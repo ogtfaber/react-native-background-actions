@@ -70,14 +70,11 @@ RCT_EXPORT_METHOD(stop:(NSString *)taskName
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
     if (!taskName) {
-        // For backward compatibility, stop all tasks if no taskName provided
-        NSArray *allKeys = [bgTasks allKeys];
-        for (NSString *key in allKeys) {
-            [self _stopTask:key];
-        }
-    } else {
-        [self _stopTask:taskName];
+        reject(@"task_name_required", @"Task name is required", nil);
+        return;
     }
+    
+    [self _stopTask:taskName];
     resolve(nil);
 }
 

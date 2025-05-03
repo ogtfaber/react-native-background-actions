@@ -6,7 +6,7 @@
     <img src="https://img.shields.io/npm/v/react-native-background-actions?color=gr&label=npm%20version" />
 </p>
 
-React Native background service library for running **background tasks forever in Android & iOS**. Schedule multiple background jobs that will run your JavaScript when your app is in the background or foreground.
+React Native background service library for running **multiple background tasks in Android & iOS**. Schedule background jobs that will run your JavaScript when your app is in the background or foreground.
 
 ### WARNING
 - **Android**: This library relies on React Native's [`HeadlessJS`](https://facebook.github.io/react-native/docs/headless-js-android) for Android. Before building your JS task, make sure to read all the [documentation](https://facebook.github.io/react-native/docs/headless-js-android). The jobs will run even if the app has been closed. [In Android 12+](https://developer.android.com/guide/components/foreground-services#background-start-restrictions) you will not be able to launch background tasks from the background. A notification will be shown when the task is running, it is not possible to start the service without it. The notification will only be visible in Android.
@@ -19,10 +19,7 @@ React Native background service library for running **background tasks forever i
 - [React Native / Android / iOS compatibility](#react-native--android--ios-compatibility)
 - [Install](#install)
 - [Usage](#usage)
-  - [New API (Multiple Tasks)](#new-api-multiple-tasks)
-    - [Example Code With Multiple Tasks](#example-code-with-multiple-tasks)
-  - [Legacy API (Single Task)](#legacy-api-single-task)
-    - [Legacy Example Code](#legacy-example-code)
+  - [API](#api)
   - [Options](#options)
     - [taskIconOptions](#taskiconoptions)
     - [taskProgressBarOptions](#taskprogressbaroptions)
@@ -48,18 +45,16 @@ Go to [INSTALL.md](./INSTALL.md) to see the how to install, compatibility with R
 
 ## Usage
 
-### New API (Multiple Tasks)
+### API
 
-The new API allows you to define and run multiple background tasks simultaneously, each with its own name and configuration. This approach is similar to the Expo TaskManager API.
-
-#### Example Code With Multiple Tasks
+To define and run background tasks, you use the following approach:
 
 ```js
 import BackgroundService from 'react-native-background-actions';
 
 const sleep = (time) => new Promise((resolve) => setTimeout(() => resolve(), time));
 
-// Define your first task: logs numbers
+// Define a task: this example logs numbers at specified intervals
 const countTask = async (taskDataArguments) => {
     const { delay, prefix } = taskDataArguments;
     await new Promise(async (resolve) => {
@@ -70,7 +65,7 @@ const countTask = async (taskDataArguments) => {
     });
 };
 
-// Define your second task: downloads data
+// Define another task: this one simulates downloading data
 const downloadTask = async (taskDataArguments) => {
     const { url, interval } = taskDataArguments;
     await new Promise(async (resolve) => {
@@ -146,56 +141,18 @@ await BackgroundService.stopTask('counter');
 await BackgroundService.stopAllTasks();
 ```
 
-### Legacy API (Single Task)
+Here's a reference of all available methods:
 
-The library still supports the legacy API for backward compatibility. However, it's recommended to use the new API for new projects.
-
-#### Legacy Example Code
-
-```js
-import BackgroundService from 'react-native-background-actions';
-
-const sleep = (time) => new Promise((resolve) => setTimeout(() => resolve(), time));
-
-// You can do anything in your task such as network requests, timers and so on,
-// as long as it doesn't touch UI. Once your task completes (i.e. the promise is resolved),
-// React Native will go into "paused" mode (unless there are other tasks running,
-// or there is a foreground app).
-const veryIntensiveTask = async (taskDataArguments) => {
-    // Example of an infinite loop task
-    const { delay } = taskDataArguments;
-    await new Promise( async (resolve) => {
-        for (let i = 0; BackgroundService.isRunning(); i++) {
-            console.log(i);
-            await sleep(delay);
-        }
-    });
-};
-
-const options = {
-    taskName: 'Example',
-    taskTitle: 'ExampleTask title',
-    taskDesc: 'ExampleTask description',
-    taskIcon: {
-        name: 'ic_launcher',
-        type: 'mipmap',
-    },
-    color: '#ff00ff',
-    linkingURI: 'yourSchemeHere://chat/jane', // See Deep Linking for more info
-    parameters: {
-        delay: 1000,
-    },
-};
-
-
-await BackgroundService.start(veryIntensiveTask, options);
-await BackgroundService.updateNotification({taskDesc: 'New ExampleTask description'}); // Only Android, iOS will ignore this call
-// iOS will also run everything here in the background until .stop() is called
-await BackgroundService.stop();
-```
-> If you call stop() on background no new tasks will be able to be started!
-> Don't call .start() twice, as it will stop performing previous background tasks and start a new one. 
-> If .start() is called on the backgound, it will not have any effect.
+| Method | Description |
+| ------ | ----------- |
+| `defineTask(taskName, taskExecutor, options)` | Defines a new background task with the given name, executor function, and options. |
+| `startTask(taskName, parameters)` | Starts a previously defined task with optional parameters. |
+| `stopTask(taskName)` | Stops a specific running task by name. |
+| `stopAllTasks()` | Stops all running background tasks. |
+| `isRunning(taskName)` | Checks if a specific task is running. |
+| `getRegisteredTaskNames()` | Returns an array of all registered task names. |
+| `getRunningTaskNames()` | Returns an array of currently running task names. |
+| `updateNotification(taskName, options)` | Updates the notification for a specific task (Android only). |
 
 ### Options
 | Property      | Type                                                  | Description                                                                                                                                                                    |
@@ -265,9 +222,6 @@ const options = {
     },
     color: '#ff00ff',
     linkingURI: 'yourSchemeHere://chat/jane', // Add this
-    parameters: {
-        delay: 1000,
-    },
 };
 
 // Define and start your task
@@ -293,7 +247,7 @@ function handleOpenURL(evt) {
 **iOS only**
 Listen for the iOS-only expiration handler that allows you to 'clean up' shortly before the app's remaining background time reaches 0. Check the iOS [documentation](https://developer.apple.com/documentation/uikit/uiapplication/1623031-beginbackgroundtask) for more info.
 
-The event now includes the task name that expired:
+The event includes the task name that expired:
 
 ```js
 BackgroundService.on('expiration', (data) => {

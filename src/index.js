@@ -62,9 +62,9 @@ class BackgroundServer extends EventEmitter {
     /**
      * Returns if the specified background task is running.
      *
-     * It returns `true` if `start()` has been called and the task has not finished.
+     * It returns `true` if `startTask()` has been called and the task has not finished.
      *
-     * It returns `false` if `stop()` has been called, **even if the task has not finished**.
+     * It returns `false` if `stopTask()` has been called, **even if the task has not finished**.
      * 
      * @param {string} taskName - The name of the task to check
      */
@@ -195,73 +195,6 @@ class BackgroundServer extends EventEmitter {
     async stopAllTasks() {
         const runningTasks = this.getRunningTaskNames();
         await Promise.all(runningTasks.map(taskName => this.stopTask(taskName)));
-    }
-
-    // Backward compatibility methods
-    
-    /**
-     * @template T
-     *
-     * @param {(taskData?: T) => Promise<void>} task
-     * @param {BackgroundTaskOptions & {parameters?: T}} options
-     * @returns {Promise<void>}
-     * @deprecated Use defineTask and startTask instead
-     */
-    async start(task, options) {
-        console.warn('BackgroundService.start() is deprecated. Please use defineTask() and startTask() instead.');
-        
-        if (!options.taskName) {
-            throw new Error('taskName is required in options');
-        }
-        
-        await this.defineTask(options.taskName, task, options);
-        await this.startTask(options.taskName, options.parameters);
-    }
-
-    /**
-     * Updates the notification for the legacy single task.
-     *
-     * @param {{taskTitle?: string,
-     *        taskDesc?: string,
-     *        taskIcon?: {name: string, type: string, package?: string},
-     *        color?: string,
-     *        linkingURI?: string,
-     *        progressBar?: {max: number, value: number, indeterminate?: boolean}}} taskData
-     * @returns {Promise<void>}
-     * @deprecated Use updateNotification(taskName, taskData) instead
-     */
-    async updateNotificationLegacy(taskData) {
-        console.warn('BackgroundService.updateNotification() without taskName is deprecated. Please use updateNotification(taskName, taskData) instead.');
-        
-        // Find the first running task for backward compatibility
-        const runningTasks = this.getRunningTaskNames();
-        if (runningTasks.length === 0) {
-            throw new Error('No running tasks found');
-        }
-        
-        return this.updateNotification(runningTasks[0], taskData);
-    }
-
-    /**
-     * Checks if any task is running for backward compatibility.
-     *
-     * @returns {boolean}
-     * @deprecated Use isRunning(taskName) instead
-     */
-    isRunningLegacy() {
-        console.warn('BackgroundService.isRunning() without taskName is deprecated. Please use isRunning(taskName) instead.');
-        return this.getRunningTaskNames().length > 0;
-    }
-
-    /**
-     * Stops all tasks for backward compatibility.
-     *
-     * @returns {Promise<void>}
-     * @deprecated Use stopTask(taskName) instead
-     */
-    async stop() {
-        console.warn('BackgroundService.stop() without taskName is deprecated. Please use stopTask(taskName) or stopAllTasks() instead.');
-        return this.stopAllTasks();
     }
 }
 

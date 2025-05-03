@@ -89,32 +89,15 @@ public class BackgroundActionsModule extends ReactContextBaseJavaModule {
     public void stop(@NonNull final String taskName, @NonNull final Promise promise) {
         try {
             if (taskName == null || taskName.isEmpty()) {
-                // For backward compatibility, stop all services if no task name provided
-                for (Intent intent : serviceIntents.values()) {
-                    reactContext.stopService(intent);
-                }
-                serviceIntents.clear();
-            } else if (serviceIntents.containsKey(taskName)) {
+                promise.reject("TASK_NAME_REQUIRED", "Task name is required");
+                return;
+            }
+            
+            if (serviceIntents.containsKey(taskName)) {
                 // Stop the specific service with this task name
                 reactContext.stopService(serviceIntents.get(taskName));
                 serviceIntents.remove(taskName);
             }
-            promise.resolve(null);
-        } catch (Exception e) {
-            promise.reject(e);
-        }
-    }
-    
-    // For backward compatibility where no task name is provided
-    @SuppressWarnings("unused")
-    @ReactMethod
-    public void stop(@NonNull final Promise promise) {
-        try {
-            // Stop all running services
-            for (Intent intent : serviceIntents.values()) {
-                reactContext.stopService(intent);
-            }
-            serviceIntents.clear();
             promise.resolve(null);
         } catch (Exception e) {
             promise.reject(e);

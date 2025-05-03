@@ -124,24 +124,44 @@ describe('BackgroundActions with multiple tasks', () => {
         expect(BackgroundActions.isRunning(task2Name)).toBe(true);
     });
     
-    test('supports backward compatibility', async () => {
-        const task = jest.fn(() => Promise.resolve());
+    test('can update notification for a specific task', async () => {
+        const taskName = 'NotificationTask';
         
-        // Legacy API
-        await BackgroundActions.start(task, {
-            ...defaultOptions,
-            taskName: 'LegacyTask'
-        });
+        // Define and start the task
+        await BackgroundActions.defineTask(taskName, jest.fn(), defaultOptions);
+        await BackgroundActions.startTask(taskName);
+        BackgroundActions._isRunningMap[taskName] = true;
         
-        // Manually set task as running for test
-        BackgroundActions._isRunningMap['LegacyTask'] = true;
+        // Update notification
+        const updatedOptions = { taskDesc: 'Updated description' };
+        await BackgroundActions.updateNotification(taskName, updatedOptions);
         
-        expect(BackgroundActions.isRunning('LegacyTask')).toBe(true);
+        // Check that updateNotification was called with correct parameters
+        expect(RNBackgroundActionsModule.updateNotification).toHaveBeenCalled();
         
-        // Legacy stop API
-        await BackgroundActions.stop();
+        // The task should still be running
+        expect(BackgroundActions.isRunning(taskName)).toBe(true);
+    });
+    
+    test('can stop all running tasks', async () => {
+        const task1Name = 'Task1';
+        const task2Name = 'Task2';
         
-        expect(BackgroundActions.isRunning('LegacyTask')).toBe(false);
+        // Define and start tasks
+        await BackgroundActions.defineTask(task1Name, jest.fn(), defaultOptions);
+        await BackgroundActions.defineTask(task2Name, jest.fn(), defaultOptions);
+        
+        // Manually set as running
+        BackgroundActions._isRunningMap[task1Name] = true;
+        BackgroundActions._isRunningMap[task2Name] = true;
+        
+        // Stop all tasks
+        await BackgroundActions.stopAllTasks();
+        
+        // Both tasks should be stopped
+        expect(BackgroundActions.isRunning(task1Name)).toBe(false);
+        expect(BackgroundActions.isRunning(task2Name)).toBe(false);
+        expect(BackgroundActions.getRunningTaskNames()).toEqual([]);
     });
     
     test('emits expiration events with taskName', () => {

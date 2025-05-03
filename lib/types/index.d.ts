@@ -64,9 +64,9 @@ declare class BackgroundServer extends EventEmitter<"expiration", { taskName: st
     /**
      * Returns if the specified background task is running.
      *
-     * It returns `true` if `start()` has been called and the task has not finished.
+     * It returns `true` if `startTask()` has been called and the task has not finished.
      *
-     * It returns `false` if `stop()` has been called, **even if the task has not finished**.
+     * It returns `false` if `stopTask()` has been called, **even if the task has not finished**.
      * 
      * @param {string} taskName - The name of the task to check
      */
@@ -91,10 +91,10 @@ declare class BackgroundServer extends EventEmitter<"expiration", { taskName: st
      *
      * @param {string} taskName - Unique identifier for the task
      * @param {(taskData?: T) => Promise<void>} taskExecutor - Function to execute when task runs
-     * @param {BackgroundTaskOptions & {parameters?: T}} options
+     * @param {BackgroundTaskOptions} options
      * @returns {Promise<void>}
      */
-    defineTask<T>(taskName: string, taskExecutor: (taskData?: T) => Promise<void>, options: BackgroundTaskOptions & { parameters?: T }): Promise<void>;
+    defineTask<T>(taskName: string, taskExecutor: (taskData?: T) => Promise<void>, options: BackgroundTaskOptions): Promise<void>;
     
     /**
      * @template T
@@ -119,63 +119,6 @@ declare class BackgroundServer extends EventEmitter<"expiration", { taskName: st
      * @returns {Promise<void>}
      */
     stopAllTasks(): Promise<void>;
-    
-    // Backward compatibility methods
-    
-    /**
-     * @template T
-     *
-     * @param {(taskData?: T) => Promise<void>} task
-     * @param {BackgroundTaskOptions & {parameters?: T}} options
-     * @returns {Promise<void>}
-     * @deprecated Use defineTask and startTask instead
-     */
-    start<T>(task: (taskData?: T) => Promise<void>, options: BackgroundTaskOptions & { taskName: string; parameters?: T }): Promise<void>;
-    
-    /**
-     * Updates the notification for the legacy single task.
-     *
-     * @param {{taskTitle?: string,
-     *        taskDesc?: string,
-     *        taskIcon?: {name: string, type: string, package?: string},
-     *        color?: string,
-     *        linkingURI?: string,
-     *        progressBar?: {max: number, value: number, indeterminate?: boolean}}} taskData
-     * @returns {Promise<void>}
-     * @deprecated Use updateNotification(taskName, taskData) instead
-     */
-    updateNotificationLegacy(taskData: {
-        taskTitle?: string;
-        taskDesc?: string;
-        taskIcon?: {
-            name: string;
-            type: string;
-            package?: string;
-        };
-        color?: string;
-        linkingURI?: string;
-        progressBar?: {
-            max: number;
-            value: number;
-            indeterminate?: boolean;
-        };
-    }): Promise<void>;
-    
-    /**
-     * Checks if any task is running for backward compatibility.
-     *
-     * @returns {boolean}
-     * @deprecated Use isRunning(taskName) instead
-     */
-    isRunningLegacy(): boolean;
-    
-    /**
-     * Stops all tasks for backward compatibility.
-     *
-     * @returns {Promise<void>}
-     * @deprecated Use stopTask(taskName) instead
-     */
-    stop(): Promise<void>;
 }
 
 import EventEmitter from "eventemitter3";
