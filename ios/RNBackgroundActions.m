@@ -25,8 +25,11 @@ RCT_EXPORT_MODULE()
     [self _stopTask:taskName];
     UIBackgroundTaskIdentifier taskId = [[UIApplication sharedApplication] beginBackgroundTaskWithName:taskName expirationHandler:^{
         [self onExpirationForTask:taskName];
-        [[UIApplication sharedApplication] endBackgroundTask:self->bgTasks[taskName].intValue];
-        [self->bgTasks removeObjectForKey:taskName];
+        NSNumber *taskIdObj = self->bgTasks[taskName];
+        if (taskIdObj != nil) {
+            [[UIApplication sharedApplication] endBackgroundTask:[taskIdObj intValue]];
+            [self->bgTasks removeObjectForKey:taskName];
+        }
     }];
     
     // Store task ID in the dictionary with task name as key
@@ -37,7 +40,7 @@ RCT_EXPORT_MODULE()
 {
     NSNumber *taskIdObj = bgTasks[taskName];
     if (taskIdObj != nil) {
-        UIBackgroundTaskIdentifier taskId = taskIdObj.intValue;
+        UIBackgroundTaskIdentifier taskId = [taskIdObj intValue];
         if (taskId != UIBackgroundTaskInvalid) {
             [[UIApplication sharedApplication] endBackgroundTask:taskId];
             [bgTasks removeObjectForKey:taskName];
