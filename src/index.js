@@ -3,7 +3,7 @@ import { RNBackgroundActions, nativeEventEmitter } from './RNBackgroundActionsMo
 import EventEmitter from 'eventemitter3';
 
 /**
- * @typedef {{taskName: string,
+ * @typedef {{
  *            taskTitle: string,
  *            taskDesc: string,
  *            taskIcon: {name: string, type: string, package?: string},
@@ -17,13 +17,10 @@ class BackgroundServer extends EventEmitter {
     constructor() {
         super();
         /** @private */
-        this._runnedTasks = 0;
-        /** @private @type {(arg0?: any) => void} */
-        this._stopTask = () => {};
+        this._tasks = {};
         /** @private */
-        this._isRunning = false;
-        /** @private @type {BackgroundTaskOptions} */
-        this._currentOptions;
+        this._isRunningMap = {};
+        /** @private */
         this._addListeners();
     }
 
@@ -31,7 +28,10 @@ class BackgroundServer extends EventEmitter {
      * @private
      */
     _addListeners() {
-        nativeEventEmitter.addListener('expiration', () => this.emit('expiration'));
+        nativeEventEmitter.addListener('expiration', (data) => {
+            const taskName = data?.taskName || '';
+            this.emit('expiration', { taskName });
+        });
     }
 
     /**
@@ -39,8 +39,9 @@ class BackgroundServer extends EventEmitter {
      *
      * Updates the task notification.
      *
-     * *On iOS this method will return immediately*
+     * *On iOS this method will return immediately if it's not Android*
      *
+     * @param {string} taskName - The name of the task to update
      * @param {{taskTitle?: string,
      *          taskDesc?: string,
      *          taskIcon?: {name: string, type: string, package?: string},
@@ -48,43 +49,98 @@ class BackgroundServer extends EventEmitter {
      *          linkingURI?: string,
      *          progressBar?: {max: number, value: number, indeterminate?: boolean}}} taskData
      */
-    async updateNotification(taskData) {
+    async updateNotification(taskName, taskData) {
         if (Platform.OS !== 'android') return;
-        if (!this.isRunning())
-            throw new Error('A BackgroundAction must be running before updating the notification');
-        this._currentOptions = this._normalizeOptions({ ...this._currentOptions, ...taskData });
-        await RNBackgroundActions.updateNotification(this._currentOptions);
+        if (!this.isRunning(taskName))
+            throw new Error(`The task "${taskName}" must be running before updating the notification`);
+        
+        const currentOptions = this._tasks[taskName].options;
+        const updatedOptions = { ...currentOptions, ...taskData, taskName };
+        await RNBackgroundActions.updateNotification(updatedOptions);
     }
 
     /**
-     * Returns if the current background task is running.
+     * Returns if the specified background task is running.
      *
      * It returns `true` if `start()` has been called and the task has not finished.
      *
      * It returns `false` if `stop()` has been called, **even if the task has not finished**.
+     * 
+     * @param {string} taskName - The name of the task to check
      */
-    isRunning() {
-        return this._isRunning;
+    isRunning(taskName) {
+        return !!this._isRunningMap[taskName];
+    }
+
+    /**
+     * Get all registered task names
+     * 
+     * @returns {string[]} Array of registered task names
+     */
+    getRegisteredTaskNames() {
+        return Object.keys(this._tasks);
+    }
+
+    /**
+     * Get all running task names
+     * 
+     * @returns {string[]} Array of running task names
+     */
+    getRunningTaskNames() {
+        return Object.keys(this._isRunningMap).filter(taskName => this._isRunningMap[taskName]);
     }
 
     /**
      * @template T
      *
-     * @param {(taskData?: T) => Promise<void>} task
+     * @param {string} taskName - Unique identifier for the task
+     * @param {(taskData?: T) => Promise<void>} taskExecutor - Function to execute when task runs
      * @param {BackgroundTaskOptions & {parameters?: T}} options
      * @returns {Promise<void>}
      */
-    async start(task, options) {
-        this._runnedTasks++;
-        this._currentOptions = this._normalizeOptions(options);
-        const finalTask = this._generateTask(task, options.parameters);
+    async defineTask(taskName, taskExecutor, options) {
+        if (!taskName) {
+            throw new Error('Task name cannot be empty');
+        }
+
+        this._tasks[taskName] = {
+            executor: taskExecutor,
+            options: {
+                ...options,
+                taskName,
+            }
+        };
+    }
+
+    /**
+     * @template T
+     *
+     * @param {string} taskName - The name of the task to start
+     * @param {T} [parameters] - Optional parameters to pass to the task
+     * @returns {Promise<void>}
+     */
+    async startTask(taskName, parameters) {
+        if (!taskName || !this._tasks[taskName]) {
+            throw new Error(`Task "${taskName}" not found. Make sure to define it first with defineTask().`);
+        }
+
+        const { executor, options } = this._tasks[taskName];
+        const finalOptions = { 
+            ...options,
+            parameters
+        };
+
+        const finalTask = this._generateTask(taskName, executor, parameters);
+        
         if (Platform.OS === 'android') {
-            AppRegistry.registerHeadlessTask(this._currentOptions.taskName, () => finalTask);
-            await RNBackgroundActions.start(this._currentOptions);
-            this._isRunning = true;
+            // Register the headless task with Android
+            AppRegistry.registerHeadlessTask(taskName, () => finalTask);
+            await RNBackgroundActions.start(finalOptions);
+            this._isRunningMap[taskName] = true;
         } else {
-            await RNBackgroundActions.start(this._currentOptions);
-            this._isRunning = true;
+            // On iOS just start the task directly
+            await RNBackgroundActions.start(finalOptions);
+            this._isRunningMap[taskName] = true;
             finalTask();
         }
     }
@@ -92,44 +148,120 @@ class BackgroundServer extends EventEmitter {
     /**
      * @private
      * @template T
-     * @param {(taskData?: T) => Promise<void>} task
+     * @param {string} taskName
+     * @param {(taskData?: T) => Promise<void>} executor
      * @param {T} [parameters]
      */
-    _generateTask(task, parameters) {
+    _generateTask(taskName, executor, parameters) {
         const self = this;
         return async () => {
             await new Promise((resolve) => {
-                self._stopTask = resolve;
-                task(parameters).then(() => self.stop());
+                self._tasks[taskName].stopCallback = resolve;
+                executor(parameters)
+                    .then(() => self.stopTask(taskName))
+                    .catch((error) => {
+                        console.error(`Task "${taskName}" failed:`, error);
+                        self.stopTask(taskName);
+                    });
             });
         };
     }
 
     /**
-     * @private
-     * @param {BackgroundTaskOptions} options
+     * Stops the specified background task.
+     *
+     * @param {string} taskName - The name of the task to stop
+     * @returns {Promise<void>}
      */
-    _normalizeOptions(options) {
-        return {
-            taskName: options.taskName + this._runnedTasks,
-            taskTitle: options.taskTitle,
-            taskDesc: options.taskDesc,
-            taskIcon: { ...options.taskIcon },
-            color: options.color || '#ffffff',
-            linkingURI: options.linkingURI,
-            progressBar: options.progressBar,
-        };
+    async stopTask(taskName) {
+        if (!taskName || !this._tasks[taskName]) {
+            throw new Error(`Task "${taskName}" not found`);
+        }
+
+        const stopCallback = this._tasks[taskName].stopCallback;
+        if (stopCallback) {
+            stopCallback();
+        }
+
+        await RNBackgroundActions.stop(taskName);
+        this._isRunningMap[taskName] = false;
     }
 
     /**
-     * Stops the background task.
+     * Stops all running background tasks.
      *
      * @returns {Promise<void>}
      */
+    async stopAllTasks() {
+        const runningTasks = this.getRunningTaskNames();
+        await Promise.all(runningTasks.map(taskName => this.stopTask(taskName)));
+    }
+
+    // Backward compatibility methods
+    
+    /**
+     * @template T
+     *
+     * @param {(taskData?: T) => Promise<void>} task
+     * @param {BackgroundTaskOptions & {parameters?: T}} options
+     * @returns {Promise<void>}
+     * @deprecated Use defineTask and startTask instead
+     */
+    async start(task, options) {
+        console.warn('BackgroundService.start() is deprecated. Please use defineTask() and startTask() instead.');
+        
+        if (!options.taskName) {
+            throw new Error('taskName is required in options');
+        }
+        
+        await this.defineTask(options.taskName, task, options);
+        await this.startTask(options.taskName, options.parameters);
+    }
+
+    /**
+     * Updates the notification for the legacy single task.
+     *
+     * @param {{taskTitle?: string,
+     *        taskDesc?: string,
+     *        taskIcon?: {name: string, type: string, package?: string},
+     *        color?: string,
+     *        linkingURI?: string,
+     *        progressBar?: {max: number, value: number, indeterminate?: boolean}}} taskData
+     * @returns {Promise<void>}
+     * @deprecated Use updateNotification(taskName, taskData) instead
+     */
+    async updateNotificationLegacy(taskData) {
+        console.warn('BackgroundService.updateNotification() without taskName is deprecated. Please use updateNotification(taskName, taskData) instead.');
+        
+        // Find the first running task for backward compatibility
+        const runningTasks = this.getRunningTaskNames();
+        if (runningTasks.length === 0) {
+            throw new Error('No running tasks found');
+        }
+        
+        return this.updateNotification(runningTasks[0], taskData);
+    }
+
+    /**
+     * Checks if any task is running for backward compatibility.
+     *
+     * @returns {boolean}
+     * @deprecated Use isRunning(taskName) instead
+     */
+    isRunningLegacy() {
+        console.warn('BackgroundService.isRunning() without taskName is deprecated. Please use isRunning(taskName) instead.');
+        return this.getRunningTaskNames().length > 0;
+    }
+
+    /**
+     * Stops all tasks for backward compatibility.
+     *
+     * @returns {Promise<void>}
+     * @deprecated Use stopTask(taskName) instead
+     */
     async stop() {
-        this._stopTask();
-        await RNBackgroundActions.stop();
-        this._isRunning = false;
+        console.warn('BackgroundService.stop() without taskName is deprecated. Please use stopTask(taskName) or stopAllTasks() instead.');
+        return this.stopAllTasks();
     }
 }
 

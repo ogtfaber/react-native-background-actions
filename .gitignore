@@ -50,3 +50,5 @@ buck-out/
 
 # Tests
 coverage
+
+**/.claude/settings.local.json

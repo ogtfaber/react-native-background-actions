@@ -2,7 +2,7 @@
 #import "RNBackgroundActions.h"
 
 @implementation RNBackgroundActions {
-    UIBackgroundTaskIdentifier bgTask;
+    NSMutableDictionary *bgTasks;
 }
 
 RCT_EXPORT_MODULE()
@@ -11,42 +11,73 @@ RCT_EXPORT_MODULE()
     return @[@"expiration"];
 }
 
-- (void) _start
+- (instancetype)init
 {
-    [self _stop];
-    bgTask = [[UIApplication sharedApplication] beginBackgroundTaskWithName:@"RNBackgroundActions" expirationHandler:^{
-        [self onExpiration];
-        [[UIApplication sharedApplication] endBackgroundTask: self->bgTask];
-        self->bgTask = UIBackgroundTaskInvalid;
-    }];
+    self = [super init];
+    if (self) {
+        bgTasks = [NSMutableDictionary dictionary];
+    }
+    return self;
 }
 
-- (void) _stop
+- (void)_startTask:(NSString *)taskName
 {
-    if (bgTask != UIBackgroundTaskInvalid) {
-        [[UIApplication sharedApplication] endBackgroundTask:bgTask];
-        bgTask = UIBackgroundTaskInvalid;
+    [self _stopTask:taskName];
+    UIBackgroundTaskIdentifier taskId = [[UIApplication sharedApplication] beginBackgroundTaskWithName:taskName expirationHandler:^{
+        [self onExpirationForTask:taskName];
+        [[UIApplication sharedApplication] endBackgroundTask:self->bgTasks[taskName].intValue];
+        [self->bgTasks removeObjectForKey:taskName];
+    }];
+    
+    // Store task ID in the dictionary with task name as key
+    bgTasks[taskName] = @(taskId);
+}
+
+- (void)_stopTask:(NSString *)taskName
+{
+    NSNumber *taskIdObj = bgTasks[taskName];
+    if (taskIdObj != nil) {
+        UIBackgroundTaskIdentifier taskId = taskIdObj.intValue;
+        if (taskId != UIBackgroundTaskInvalid) {
+            [[UIApplication sharedApplication] endBackgroundTask:taskId];
+            [bgTasks removeObjectForKey:taskName];
+        }
     }
 }
 
-- (void)onExpiration
+- (void)onExpirationForTask:(NSString *)taskName
 {
     [self sendEventWithName:@"expiration"
-                       body:@{}];
+                       body:@{@"taskName": taskName}];
 }
 
 RCT_EXPORT_METHOD(start:(NSDictionary *)options
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-    [self _start];
+    NSString *taskName = options[@"taskName"];
+    if (!taskName) {
+        reject(@"task_name_required", @"Task name is required", nil);
+        return;
+    }
+    
+    [self _startTask:taskName];
     resolve(nil);
 }
 
-RCT_EXPORT_METHOD(stop:(RCTPromiseResolveBlock)resolve
+RCT_EXPORT_METHOD(stop:(NSString *)taskName
+                  resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-    [self _stop];
+    if (!taskName) {
+        // For backward compatibility, stop all tasks if no taskName provided
+        NSArray *allKeys = [bgTasks allKeys];
+        for (NSString *key in allKeys) {
+            [self _stopTask:key];
+        }
+    } else {
+        [self _stopTask:taskName];
+    }
     resolve(nil);
 }
 
